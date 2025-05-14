@@ -84,6 +84,28 @@ Depois execute o bot no telegram:
 make telegram
 ```
 
+### Executando com Docker Compose para Telegram
+
+Para executar o projeto utilizando o Docker Compose com suporte ao Telegram, siga os passos abaixo:
+
+1. Certifique-se de que todas as variáveis de ambiente necessárias para o Telegram estejam configuradas conforme o [tutorial de configuração do Telegram](/docs/setup_telegram.md).
+
+2. Execute o seguinte comando para iniciar os serviços com o Docker Compose:
+
+```sh
+docker compose -f docker-compose-telegram.yml up --build
+```
+
+3. Após a execução do comando, o bot estará disponível e pronto para interagir via Telegram.
+
+4. Para parar os serviços, utilize o comando:
+
+```sh
+docker compose -f docker-compose-telegram.yml down
+```
+
+Essa abordagem facilita a execução e o gerenciamento dos serviços necessários para o funcionamento do bot no Telegram, utilizando containers Docker.
+
 ### Analytics
 
 Para a visualização dos dados da interação entre o usuário e o chatbot nós utilizamos uma parte da Stack do Elastic, composta pelo ElasticSearch e o Kibana. Com isso, utilizamos um broker para fazer a gerência de mensagens. Então conseguimos adicionar mensagens ao ElasticSearch independente do tipo de mensageiro que estamos utilizando.
@@ -192,3 +214,21 @@ Todo o framework do boilerplate é desenvolvido sob a licença
 [GPL3](https://github.com/lappis-unb/rasa-ptbr-boilerplate/blob/master/LICENSE)
 
 Veja a lista de dependências de licenças [aqui](https://libraries.io/github/lappis-unb/rasa-ptbr-boilerplate)
+
+### Sugestão de Uso do Ngrok para Configuração do Telegram
+
+Para facilitar a configuração do webhook do Telegram, você pode utilizar o [ngrok](https://ngrok.com/) para expor localmente o seu servidor de desenvolvimento na internet. Isso é útil para testes e desenvolvimento local.
+
+1. Instale o ngrok seguindo as instruções no [site oficial](https://ngrok.com/download).
+
+2. Após a instalação, execute o seguinte comando para expor a porta 5005 (ou a porta que seu Rasa está rodando):
+
+```sh
+ngrok http 5005
+```
+
+3. O ngrok fornecerá uma URL pública que você pode usar para configurar o webhook do Telegram. A URL terá o formato `https://<subdomínio>.ngrok.io`.
+
+4. Configure o webhook do Telegram com a URL fornecida pelo ngrok.
+
+Essa abordagem permite que você teste o bot localmente enquanto ele interage com o Telegram, sem a necessidade de um servidor público.
