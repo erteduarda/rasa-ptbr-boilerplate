@@ -55,8 +55,9 @@ telegram:
 		-m models/ \
 		$(LOG_LEVEL) \
 		$(RASA_ENDPOINTS) $(ENDPOINTS) \
-		$(RASA_CREDENTIALS)	credentials/telegram-credentials.yml \
+		$(RASA_CREDENTIALS)	credentials.yml \
 		--port 5005 \
+		--logging-config logging.yml
 
 # ACTIONS
 actions:
