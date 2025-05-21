@@ -88,12 +88,15 @@ make telegram
 
 Para executar o projeto utilizando o Docker Compose com suporte ao Telegram, siga os passos abaixo:
 
-1. Certifique-se de que todas as variáveis de ambiente necessárias para o Telegram estejam configuradas conforme o [tutorial de configuração do Telegram](/docs/setup_telegram.md).
+1. Configure as variáveis de ambiente necessárias:
+   - Copie o arquivo de exemplo `env/bot-telegram.env.example` para `env/bot-telegram.env`
+   - Copie o arquivo de exemplo `bot/.env.example` para `bot/.env`
+   - Edite os arquivos `.env` com suas configurações específicas
 
 2. Execute o seguinte comando para iniciar os serviços com o Docker Compose:
 
 ```sh
-docker compose -f docker-compose-telegram.yml up --build
+docker compose -f docker-compose-telegram.yml up mongo actions bot-telegram
 ```
 
 3. Após a execução do comando, o bot estará disponível e pronto para interagir via Telegram.
@@ -101,7 +104,7 @@ docker compose -f docker-compose-telegram.yml up --build
 4. Para parar os serviços, utilize o comando:
 
 ```sh
-docker compose -f docker-compose-telegram.yml down
+docker compose -f docker-compose-telegram.yml down --remove-orphans
 ```
 
 Essa abordagem facilita a execução e o gerenciamento dos serviços necessários para o funcionamento do bot no Telegram, utilizando containers Docker.
