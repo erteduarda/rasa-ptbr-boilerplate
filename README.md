@@ -96,7 +96,7 @@ Para executar o projeto utilizando o Docker Compose com suporte ao Telegram, sig
 2. Execute o seguinte comando para iniciar os serviços com o Docker Compose:
 
 ```sh
-docker compose -f docker-compose-telegram.yml up mongo actions bot-telegram
+docker compose -f docker-compose-telegram.yml up mongo actions bot-telegram conversor
 ```
 
 3. Após a execução do comando, o bot estará disponível e pronto para interagir via Telegram.
@@ -227,7 +227,7 @@ Para facilitar a configuração do webhook do Telegram, você pode utilizar o [n
 2. Após a instalação, execute o seguinte comando para expor a porta 5005 (ou a porta que seu Rasa está rodando):
 
 ```sh
-ngrok http 5005
+ngrok http 8000
 ```
 
 3. O ngrok fornecerá uma URL pública que você pode usar para configurar o webhook do Telegram. A URL terá o formato `https://<subdomínio>.ngrok.io`.

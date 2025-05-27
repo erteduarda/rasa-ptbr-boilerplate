@@ -15,12 +15,13 @@ services:
     volumes:
       - ./bot/:/bot/
     ports:
-      - 5005:5005
+      - 5006:5005
     depends_on:
       - actions
       - mongo
     networks:
       - bot
+    command: rasa run --enable-api --cors "*" --debug
   # ============================ Tracker Store=================================
   # A mongodb container as rasa tracker store.
   mongo:
@@ -74,6 +75,19 @@ services:
       command: sh -c "make telegram"
       networks:
         - bot
+
+# ============================ Telegram Conversor =================================
+# Conversor de voz para texto usando Whisper API.
+  conversor:
+    build: ./conversor
+    env_file:
+      - ./env/bot-telegram.env
+    ports:
+      - "8000:8000"
+    networks:
+      - bot
+    depends_on:
+      - bot-telegram
 
 volumes:
   mongo_data:
