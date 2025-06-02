@@ -1,11 +1,11 @@
-name: Docker
+name: build-telegram
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ 'v*.*.*' ]
+    branches: ["main"]
+    tags: ["v*.*.*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   REGISTRY: ghcr.io
@@ -20,47 +20,60 @@ jobs:
       id-token: write
 
     steps:
-      - name: Checkout repository
+      - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Install cosign
+      # 1) Instalar Cosign, caso queira assinar depois (não roda em PR)
+      - name: Instalar Cosign (só fora de PR)
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20
         with:
           cosign-release: 'v2.2.4'
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226
-
-      - name: Log into registry ${{ env.REGISTRY }}
+      # 2) Fazer login no registry (não roda em PR)
+      - name: Fazer login no registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@96383f45573cb7f253c731d3b3ab81c87ef81934
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-
-      - name: Build and push Docker image
-        id: build-and-push
-        uses: docker/build-push-action@0565240e2d4ab88bba5387d719585280857ece09
-        with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Sign the published Docker image
-        if: ${{ github.event_name != 'pull_request' }}
-        env:
-          TAGS: ${{ steps.meta.outputs.tags }}
-          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+      # 3) Build das imagens usando o docker-compose-telegram.yml
+      - name: Build das imagens (docker-compose-telegram.yml)
         run: |
-          echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+          # Use "-f docker-compose-telegram.yml" para apontar ao arquivo correto
+          docker compose -f docker-compose-telegram.yml build
+
+      # 4) Push das imagens (não roda em PR)
+      - name: Publicar imagens no registry (docker-compose-telegram.yml)
+        if: github.event_name != 'pull_request'
+        run: |
+          docker compose -f docker-compose-telegram.yml push
+
+      # 5) (Opcional) Assinar as imagens com Cosign
+      #    → Ajuste abaixo de acordo com as tags definidas dentro do seu 
+      #      docker-compose-telegram.yml. Aqui, por exemplo, supomos que você 
+      #      definiu no compose algo como:
+      #
+      #      services:
+      #        bot:
+      #          image: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
+      #
+      #    A ideia é extrair o digest de cada serviço e rodar cosign sign.
+      - name: Assinar imagens publicadas com Cosign
+        if: github.event_name != 'pull_request'
+        env:
+          # Exemplo de tag para o serviço “bot”. Ajuste conforme seu compose.
+          IMAGE_TAG: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
+        run: |
+          # Obtém o digest da imagem que acabou de subir
+          DIGEST=$(docker manifest inspect $IMAGE_TAG --json \
+            | jq -r '.manifests[0].digest')
+          cosign sign --yes $IMAGE_TAG@$DIGEST
+
+          # Se tiver mais serviços (ex: “worker”), repita:
+          # IMAGE_TAG=ghcr.io/${{ github.repository }}:worker-${{ github.sha }}
+          # DIGEST=$(docker manifest inspect $IMAGE_TAG --json \
+          #   | jq -r '.manifests[0].digest')
+          # cosign sign --yes $IMAGE_TAG@$DIGEST
