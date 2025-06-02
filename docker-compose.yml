@@ -70,7 +70,6 @@ volumes:
   mongo_data:
   rocket_uploads:
 
-
 networks:
   bot:
     driver: bridge

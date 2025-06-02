@@ -59,25 +59,25 @@ services:
   # ============================ Telegram Bot =================================
   # Specific Rasa bot integrated with Telegram.
   bot-telegram:
-      build:
-        context: .
-        dockerfile: ./docker/bot.Dockerfile
-        args:
-          RASA_VERSION: ${RASA_VERSION}
-          RASA_SDK_VERSION: ${RASA_SDK_VERSION}
-      volumes:
-        - ./bot/:/bot/
-      env_file:
-        - ./env/bot-telegram.env
-        - ./env/bot.env
-      ports:
-        - 5005:5005
-      command: sh -c "make telegram"
-      networks:
-        - bot
+    build:
+      context: .
+      dockerfile: ./docker/bot.Dockerfile
+      args:
+        RASA_VERSION: ${RASA_VERSION}
+        RASA_SDK_VERSION: ${RASA_SDK_VERSION}
+    volumes:
+      - ./bot/:/bot/
+    env_file:
+      - ./env/bot-telegram.env
+      - ./env/bot.env
+    ports:
+      - 5006:5006
+    command: sh -c "make telegram"
+    networks:
+      - bot
 
-# ============================ Telegram Conversor =================================
-# Conversor de voz para texto usando Whisper API.
+  # ============================ Telegram Conversor =================================
+  # Conversor de voz para texto usando Whisper API.
   conversor:
     build: ./conversor
     env_file:
