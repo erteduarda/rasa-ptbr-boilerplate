@@ -5,75 +5,108 @@ name: build_bot
 
 on:
   push:
-    branches: [ main]
+    branches: [ main ]
   pull_request:
-    branches: [ main]
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.10.13]
-
+        python-version: [3.12]
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v1
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        cd bot/
-        export $(grep -v '^#' .env | xargs)
-        pip install --upgrade pip
-        pip install flake8 pytest rasa==$RASA_VERSION
-        if [ -f requirements.txt ]; then make install; fi
-    - name: Lint with flake8
-      run: |
-        # stop the build if there are Python syntax errors or undefined names
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
-    - name: Test Rasa version
-      run: |
-        rasa --version 
-        echo "Rasa is installed"
-    - name: Rasa train
-      run: |
-        # Removing endpoints.yml and credentials.yml to this workflow.
-        rm bot/endpoints.yml
-        rm bot/credentials.yml
-        cd bot/
-        # Editing config.yml to train with less time.
-        sed -i "s/epochs.*$/epochs: 5/" ./config.yml
-        echo "Changed epochs to 10 to check faster"
-        make train
-        echo "Model is saved"
-    - name: Test actions
-      run: |
-        cd bot/
-        make actions &
-    - name: Test rasa api
-      run: |
-        cd bot/
-        make api &
-        curl --connect-timeout 5 \
-        --max-time 10 \
-        --retry 20 \
-        --retry-delay 5 \
-        --retry-max-time 120 \
-        --retry-connrefused 'http://localhost:5005'
-        echo "Bot is working"
-    - name: Test bot intent cumprimentar
-      run: |
-        intent=$(curl -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "Oi"}' | jq -r '.intent' | jq -r '.name')
-        if [ $intent=='cumprimentar' ]; then echo "Ok"; else echo "erro" && exit 1; fi
-    - name: Test bot SDK response
-      run: |
-        curl -XPOST http://localhost:5005/webhooks/rest/webhook -H 'Content-Type: application/json' -d '{"sender":"default","message":"custom action"}'
-    - name: Test Rasa bot
-      run: |
-        cd bot/
-        rasa test --no-plot
-        echo "Results is saved"
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          cd bot/
+          pip install --upgrade pip
+          pip install flake8
+      - name: Lint with flake8
+        run: |
+          cd bot/
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  validate:
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        python-version: [3.12]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          cd bot/
+          export $(grep -v '^#' .env | xargs)
+          pip install --upgrade pip
+          pip install rasa==$RASA_VERSION
+          if [ -f requirements.txt ]; then make install; fi
+      - name: Validate Rasa project
+        run: |
+          cd bot/
+          rasa validate
+      - name: Rasa train
+        run: |
+          rm bot/endpoints.yml || true
+          rm bot/credentials.yml || true
+          cd bot/
+          sed -i "s/epochs.*$/epochs: 5/" ./config.yml
+          echo "Changed epochs to 5 to check faster"
+          make train
+          echo "Model is saved"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: validate
+    strategy:
+      matrix:
+        python-version: [3.12]
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v1
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          cd bot/
+          export $(grep -v '^#' .env | xargs)
+          pip install --upgrade pip
+          pip install rasa==$RASA_VERSION jq
+          if [ -f requirements.txt ]; then make install; fi
+      - name: Test actions
+        run: |
+          cd bot/
+          make actions &
+      - name: Test rasa api
+        run: |
+          cd bot/
+          make api &
+          curl --connect-timeout 5 \
+          --max-time 10 \
+          --retry 20 \
+          --retry-delay 5 \
+          --retry-max-time 120 \
+          --retry-connrefused 'http://localhost:5005'
+          echo "Bot is working"
+      - name: Test bot intent cumprimentar
+        run: |
+          intent=$(curl -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "Oi"}' | jq -r '.intent' | jq -r '.name')
+          if [ "$intent" = "cumprimentar" ]; then echo "Ok"; else echo "erro" && exit 1; fi
+      - name: Test bot SDK response
+        run: |
+          curl -XPOST http://localhost:5005/webhooks/rest/webhook -H 'Content-Type: application/json' -d '{"sender":"default","message":"custom action"}'
+      - name: Test Rasa bot
+        run: |
+          cd bot/
+          rasa test --no-plot
+          echo "Results is saved"
