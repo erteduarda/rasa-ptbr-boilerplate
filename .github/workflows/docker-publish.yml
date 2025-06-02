@@ -66,26 +66,4 @@ jobs:
         run: |
           docker compose -f docker-compose-telegram.yml push
 
-      # 7) Assinar as imagens com Cosign (só fora de PR)
-      - name: Assinar imagens publicadas com Cosign
-        if: github.event_name != 'pull_request'
-        env:
-          # Este IMAGE_TAG deve combinar exatamente com o `image:` que você colocou no Compose acima.
-          IMAGE_TAG: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
-        run: |
-          echo ">> Puxando a imagem para garantir que ela exista localmente"
-          docker pull "$IMAGE_TAG"
 
-          echo ">> Extraindo o digest que foi gerado pelo pull"
-          DIGEST="$(docker image inspect "$IMAGE_TAG" --format='{{ index .RepoDigests 0 }}')"
-
-          if [ -z "$DIGEST" ]; then
-            echo "❌ Não foi possível extrair o digest da imagem (RepoDigests vazio)."
-            exit 1
-          fi
-
-          echo ">> Digest encontrado: $DIGEST"
-          echo ">> Iniciando assinatura com Cosign"
-          cosign sign --yes "$DIGEST"
-
-          echo "✔️ Imagem assinada com sucesso: $DIGEST"
