@@ -26,24 +26,23 @@ jobs:
 
       # 2) Copiar o .env da raiz para dentro de bot/ (para o Makefile não falhar)
       - name: Copiar .env para dentro de bot/
-        run: |
-          cp ./.env ./bot/.env
+        run: cp ./.env ./bot/.env
 
       # 3) Criar a pasta env/ e copiar .env para env/bot-telegram.env
-      #    (isso resolve o “env file .../env/bot-telegram.env not found”)
+      #    (para que o docker-compose-telegram.yml encontre o env_file)
       - name: Preparar arquivo de ambiente para o Compose
         run: |
           mkdir -p env
           cp ./.env ./env/bot-telegram.env
 
-      # 4) Instalar Cosign, caso queira assinar depois (não roda em PR)
+      # 4) Instalar Cosign (só fora de PR)
       - name: Instalar Cosign (só fora de PR)
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20
         with:
           cosign-release: 'v2.2.4'
 
-      # 5) Fazer login no registry (não roda em PR)
+      # 5) Fazer login no registry (só fora de PR)
       - name: Fazer login no registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -57,27 +56,28 @@ jobs:
         run: |
           docker compose -f docker-compose-telegram.yml build
 
-      # 7) Push das imagens (apenas fora de PR)
+      # 7) Push das imagens (só fora de PR)
       - name: Publicar imagens no registry (docker-compose-telegram.yml)
         if: github.event_name != 'pull_request'
         run: |
           docker compose -f docker-compose-telegram.yml push
 
-      # 8) (Opcional) Assinar as imagens com Cosign (apenas fora de PR)
+      # 8) Assinar as imagens com Cosign (só fora de PR)
       - name: Assinar imagens publicadas com Cosign
         if: github.event_name != 'pull_request'
         env:
-          # Ajuste esta tag conforme o serviço que você definiu
-          # no seu docker-compose-telegram.yml.
+          # Atenção: ajuste esta tag exatamente como você definiu em docker-compose-telegram.yml
+          # Exemplo: se no YAML você colocou
+          #   services:
+          #     bot:
+          #       image: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
+          #
+          # então mantenha essa mesma string aqui:
           IMAGE_TAG: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
         run: |
-          # Obtém o digest da imagem que acabou de subir
-          DIGEST=$(docker manifest inspect "$IMAGE_TAG" --json \
-            | jq -r '.manifests[0].digest')
-          cosign sign --yes "$IMAGE_TAG@$DIGEST"
+          # Em vez de tentar inspecionar o digest, basta chamar o Cosign na TAG
+          cosign sign --yes "$IMAGE_TAG"
 
-          # Se você tiver outros serviços (por exemplo, "worker"), repita o bloco acima:
+          # Se tiver outros serviços (por ex. "worker"), repita:
           # IMAGE_TAG=ghcr.io/${{ github.repository }}:worker-${{ github.sha }}
-          # DIGEST=$(docker manifest inspect "$IMAGE_TAG" --json \
-          #   | jq -r '.manifests[0].digest')
-          # cosign sign --yes "$IMAGE_TAG@$DIGEST"
+          # cosign sign --yes "$IMAGE_TAG"
