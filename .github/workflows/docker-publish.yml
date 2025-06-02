@@ -26,10 +26,11 @@ jobs:
 
       # 2) Copiar o .env da raiz para dentro de bot/ (para o Makefile não falhar)
       - name: Copiar .env para dentro de bot/
-        run: cp ./.env ./bot/.env
+        run: |
+          cp ./.env ./bot/.env
 
       # 3) Criar a pasta env/ e copiar .env para env/bot-telegram.env
-      #    (para que o docker-compose-telegram.yml encontre o env_file)
+      #    (assegura que o docker-compose-telegram.yml encontre o env_file)
       - name: Preparar arquivo de ambiente para o Compose
         run: |
           mkdir -p env
@@ -56,28 +57,44 @@ jobs:
         run: |
           docker compose -f docker-compose-telegram.yml build
 
-      # 7) Push das imagens (só fora de PR)
+      # 7) Push das imagens (apenas fora de PR)
       - name: Publicar imagens no registry (docker-compose-telegram.yml)
         if: github.event_name != 'pull_request'
         run: |
           docker compose -f docker-compose-telegram.yml push
 
-      # 8) Assinar as imagens com Cosign (só fora de PR)
+      # 8) Assinar as imagens publicadas com Cosign (apenas fora de PR)
+      #
+      #    Em vez de tentar "docker manifest inspect --json", vamos:
+      #      1) dar `docker pull` da imagem já enviada
+      #      2) usar `docker image inspect` para obter o digest
+      #      3) chamar `cosign sign` passando esse digest completo
       - name: Assinar imagens publicadas com Cosign
         if: github.event_name != 'pull_request'
         env:
-          # Atenção: ajuste esta tag exatamente como você definiu em docker-compose-telegram.yml
-          # Exemplo: se no YAML você colocou
+          # Ajuste para a mesma tag que você define dentro do seu docker-compose-telegram.yml.
+          # Por exemplo, se no seu YAML você tem:
           #   services:
           #     bot:
           #       image: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
           #
-          # então mantenha essa mesma string aqui:
+          # então use exatamente essa string abaixo:
           IMAGE_TAG: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
         run: |
-          # Em vez de tentar inspecionar o digest, basta chamar o Cosign na TAG
-          cosign sign --yes "$IMAGE_TAG"
+          echo ">> Tentando puxar a imagem do registry para extrair o digest"
+          docker pull "$IMAGE_TAG"
 
-          # Se tiver outros serviços (por ex. "worker"), repita:
-          # IMAGE_TAG=ghcr.io/${{ github.repository }}:worker-${{ github.sha }}
-          # cosign sign --yes "$IMAGE_TAG"
+          echo ">> Verificando o digest local (RepoDigests)"
+          DIGEST="$(docker image inspect "$IMAGE_TAG" \
+            --format='{{ index .RepoDigests 0 }}')"
+
+          if [ -z "$DIGEST" ]; then
+            echo "❌ Não foi possível extrair o digest da imagem (RepoDigests vazio)."
+            exit 1
+          fi
+
+          echo ">> Digest encontrado: $DIGEST"
+          echo ">> Iniciando assinatura com Cosign"
+          cosign sign --yes "$DIGEST"
+
+          echo "✔️ Imagem assinada com sucesso: $DIGEST"
