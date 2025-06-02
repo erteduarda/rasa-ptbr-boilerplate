@@ -20,30 +20,28 @@ jobs:
       id-token: write
 
     steps:
-      # 1) Clona o repositório
+      # 1) Clonar o repositório
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      # 2) Copiar o .env da raiz para dentro de bot/ (para o Makefile não falhar)
+      # 2) Copiar o .env da raiz para dentro de bot/
       - name: Copiar .env para dentro de bot/
-        run: |
-          cp ./.env ./bot/.env
+        run: cp ./.env ./bot/.env
 
       # 3) Criar a pasta env/ e copiar .env para env/bot-telegram.env
-      #    (assegura que o docker-compose-telegram.yml encontre o env_file)
       - name: Preparar arquivo de ambiente para o Compose
         run: |
           mkdir -p env
           cp ./.env ./env/bot-telegram.env
 
       # 4) Instalar Cosign (só fora de PR)
-      - name: Instalar Cosign (só fora de PR)
+      - name: Instalar Cosign
         if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@59acb6260d9c0ba8f4a2f9d9b48431a222b68e20
         with:
           cosign-release: 'v2.2.4'
 
-      # 5) Fazer login no registry (só fora de PR)
+      # 5) Fazer login no GHCR (só fora de PR)
       - name: Fazer login no registry ${{ env.REGISTRY }}
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -52,41 +50,34 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 6) Build das imagens usando o docker-compose-telegram.yml
+      # 6) Build e Push das imagens
       - name: Build das imagens (docker-compose-telegram.yml)
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           docker compose -f docker-compose-telegram.yml build
 
-      # 7) Push das imagens (apenas fora de PR)
       - name: Publicar imagens no registry (docker-compose-telegram.yml)
         if: github.event_name != 'pull_request'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           docker compose -f docker-compose-telegram.yml push
 
-      # 8) Assinar as imagens publicadas com Cosign (apenas fora de PR)
-      #
-      #    Em vez de tentar "docker manifest inspect --json", vamos:
-      #      1) dar `docker pull` da imagem já enviada
-      #      2) usar `docker image inspect` para obter o digest
-      #      3) chamar `cosign sign` passando esse digest completo
+      # 7) Assinar as imagens com Cosign (só fora de PR)
       - name: Assinar imagens publicadas com Cosign
         if: github.event_name != 'pull_request'
         env:
-          # Ajuste para a mesma tag que você define dentro do seu docker-compose-telegram.yml.
-          # Por exemplo, se no seu YAML você tem:
-          #   services:
-          #     bot:
-          #       image: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
-          #
-          # então use exatamente essa string abaixo:
+          # Este IMAGE_TAG deve combinar exatamente com o `image:` que você colocou no Compose acima.
           IMAGE_TAG: ghcr.io/${{ github.repository }}:bot-${{ github.sha }}
         run: |
-          echo ">> Tentando puxar a imagem do registry para extrair o digest"
+          echo ">> Puxando a imagem para garantir que ela exista localmente"
           docker pull "$IMAGE_TAG"
 
-          echo ">> Verificando o digest local (RepoDigests)"
-          DIGEST="$(docker image inspect "$IMAGE_TAG" \
-            --format='{{ index .RepoDigests 0 }}')"
+          echo ">> Extraindo o digest que foi gerado pelo pull"
+          DIGEST="$(docker image inspect "$IMAGE_TAG" --format='{{ index .RepoDigests 0 }}')"
 
           if [ -z "$DIGEST" ]; then
             echo "❌ Não foi possível extrair o digest da imagem (RepoDigests vazio)."
