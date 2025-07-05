@@ -95,7 +95,6 @@ jobs:
       - name: Setup test environment and start services
         run: |
           cd bot/
-          # Create test configs
           cat > credentials-test.yml << EOF
           socketio:
             user_message_evt: user_uttered
@@ -109,7 +108,6 @@ jobs:
           tracker_store:
             type: "in_memory"
           EOF
-          # Start services
           rasa run actions --actions actions &
           sleep 5
           rasa run -m models/ --endpoints endpoints-test.yml --credentials credentials-test.yml --enable-api --cors '*' --port 5005 &
@@ -125,7 +123,6 @@ jobs:
           if [ "$intent1" != "cumprimentar" ] && [ "$intent2" != "cumprimentar" ] && [ "$intent3" != "afirmar" ]; then
             exit 1
           fi
-          # Test webhook
           response=$(curl -s -XPOST http://localhost:5005/webhooks/rest/webhook -H 'Content-Type: application/json' -d '{"sender":"default","message":"Olá"}')
           if [ -z "$response" ]; then
             exit 1
