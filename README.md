@@ -1,3 +1,10 @@
+# Deploys da Aplicação:
+**Webchat:** 
+https://deploys.site/ 
+
+**Bot no Telegram:** 
+https://t.me/Metaldoguns_bot
+
 # Rasa Boilerplate
 <!-- badges -->
 <a href="https://www.gnu.org/licenses/gpl-3.0.pt-br.html"><img src="https://img.shields.io/badge/licence-GPL3-green.svg"/></a>
