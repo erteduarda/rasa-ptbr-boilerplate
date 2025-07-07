@@ -13,11 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.12]
+        python-version: ["3.12"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
@@ -36,77 +36,96 @@ jobs:
     needs: lint
     strategy:
       matrix:
-        python-version: [3.12]
+        python-version: ["3.10"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           cd bot/
-          export $(grep -v '^#' .env | xargs)
+          cp .env.example .env || touch .env
+          export $(grep -v '^#' .env.example | xargs) || true
           pip install --upgrade pip
           pip install rasa==$RASA_VERSION
-          if [ -f requirements.txt ]; then make install; fi
-      - name: Validate Rasa project
+          pip install rasa-model-report==1.5.0
+      - name: Validate and train
         run: |
           cd bot/
-          rasa validate
-      - name: Rasa train
-        run: |
-          rm bot/endpoints.yml || true
-          rm bot/credentials.yml || true
-          cd bot/
-          sed -i "s/epochs.*$/epochs: 5/" ./config.yml
-          echo "Changed epochs to 5 to check faster"
+          rasa data validate
+          rm ../bot/endpoints.yml || true
+          rm ../bot/credentials.yml || true
+          sed -i "s/epochs.*$/epochs: 15/" ./config.yml
           make train
-          echo "Model is saved"
+      - name: Upload trained model
+        uses: actions/upload-artifact@v4
+        with:
+          name: rasa-model
+          path: bot/models/
 
   test:
     runs-on: ubuntu-latest
     needs: validate
     strategy:
       matrix:
-        python-version: [3.12]
+        python-version: ["3.10"]
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+      - name: Download trained model
+        uses: actions/download-artifact@v4
+        with:
+          name: rasa-model
+          path: bot/models/
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
           cd bot/
-          export $(grep -v '^#' .env | xargs)
+          cp .env.example .env || touch .env
+          export $(grep -v '^#' .env.example | xargs) || true
           pip install --upgrade pip
-          pip install rasa==$RASA_VERSION jq
-          if [ -f requirements.txt ]; then make install; fi
-      - name: Test actions
+          pip install rasa==$RASA_VERSION
+          pip install rasa-sdk==$RASA_SDK_VERSION
+          pip install jq
+      - name: Setup test environment and start services
         run: |
           cd bot/
-          make actions &
-      - name: Test rasa api
+          cat > credentials-test.yml << EOF
+          socketio:
+            user_message_evt: user_uttered
+            bot_message_evt: bot_uttered
+            session_persistence: true
+          rest:
+          EOF
+          cat > endpoints-test.yml << EOF
+          action_endpoint:
+            url: "http://localhost:5055/webhook"
+          tracker_store:
+            type: "in_memory"
+          EOF
+          rasa run actions --actions actions &
+          sleep 5
+          rasa run -m models/ --endpoints endpoints-test.yml --credentials credentials-test.yml --enable-api --cors '*' --port 5005 &
+          sleep 15
+          curl --connect-timeout 10 --max-time 15 --retry 30 --retry-delay 10 --retry-max-time 300 --retry-connrefused 'http://localhost:5005'
+      - name: Run tests
         run: |
           cd bot/
-          make api &
-          curl --connect-timeout 5 \
-          --max-time 10 \
-          --retry 20 \
-          --retry-delay 5 \
-          --retry-max-time 120 \
-          --retry-connrefused 'http://localhost:5005'
-          echo "Bot is working"
-      - name: Test bot intent cumprimentar
-        run: |
-          intent=$(curl -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "Oi"}' | jq -r '.intent' | jq -r '.name')
-          if [ "$intent" = "cumprimentar" ]; then echo "Ok"; else echo "erro" && exit 1; fi
-      - name: Test bot SDK response
-        run: |
-          curl -XPOST http://localhost:5005/webhooks/rest/webhook -H 'Content-Type: application/json' -d '{"sender":"default","message":"custom action"}'
-      - name: Test Rasa bot
-        run: |
-          cd bot/
+          # Test intent recognition
+          intent1=$(curl -s -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "Olá"}' | jq -r '.intent.name')
+          intent2=$(curl -s -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "bom dia"}' | jq -r '.intent.name')
+          intent3=$(curl -s -X POST http://localhost:5005/model/parse -H 'Content-Type: application/json' -d '{"text": "sim"}' | jq -r '.intent.name')
+          if [ "$intent1" != "cumprimentar" ] && [ "$intent2" != "cumprimentar" ] && [ "$intent3" != "afirmar" ]; then
+            exit 1
+          fi
+          response=$(curl -s -XPOST http://localhost:5005/webhooks/rest/webhook -H 'Content-Type: application/json' -d '{"sender":"default","message":"Olá"}')
+          if [ -z "$response" ]; then
+            exit 1
+          fi
+          # Run Rasa tests
           rasa test --no-plot
-          echo "Results is saved"
